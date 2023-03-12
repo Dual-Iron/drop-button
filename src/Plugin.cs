@@ -29,7 +29,8 @@ sealed class Plugin : BaseUnityPlugin
 
     private void Player_ReleaseObject(On.Player.orig_ReleaseObject orig, Player self, int grasp, bool eu)
     {
-        if (ActiveFor(self) && (self.input[0].x != 0 || self.input[0].y != 0) && self.grasps[grasp]?.grabbed is PhysicalObject grabbed) {
+        bool toss = self.input[0].x != 0 && self.input[0].y >= 0 || self.input[0].x == 0 && self.input[0].y < 0;
+        if (ActiveFor(self) && toss && self.grasps[grasp]?.grabbed is PhysicalObject grabbed) {
             LightToss(self, grasp, grabbed);
             return;
         }
@@ -67,7 +68,7 @@ sealed class Plugin : BaseUnityPlugin
                 angle = 70f;
             }
         }
-        if (self.input[0].y < 0 && self.input[0].x == 0) {
+        if (self.input[0].x == 0 && self.input[0].y < 0) {
             angle = 180f;
             speed = 8f;
             for (int i = 0; i < grabbed.bodyChunks.Length; i++) {
