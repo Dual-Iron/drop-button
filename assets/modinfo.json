@@ -1,10 +1,12 @@
 ﻿{
-  "id": "testmod",
-  "name": "Test Mod",
-  "version": "0.1.0",
-  "authors": "Author",
-  "description": "Put a neat description here",
-  "requirements": [],
-  "requirements_names": [],
+  "id": "drop-button",
+  "name": "Drop Button",
+  "version": "1.0.0",
+  "authors": "Dual",
+  "target_game_version": "v1.9",
+  "description": "Adds a dedicated button to drop or politely toss held objects. If the key is bound, the vanilla key is unbound. Configure in the Input Settings screen.",
+  "tags": [ "Accessibility", "Game Mechanics", "Items" ],
+  "requirements": [ "improved-input-config" ],
+  "requirements_names": [ "Improved Input Config" ],
   "checksum_override_version": false
 }
