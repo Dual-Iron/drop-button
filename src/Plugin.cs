@@ -4,6 +4,7 @@ using Mono.Cecil.Cil;
 using MonoMod.Cil;
 using RWCustom;
 using System;
+using System.Runtime.CompilerServices;
 using System.Security.Permissions;
 using UnityEngine;
 
@@ -17,24 +18,50 @@ namespace DropButton;
 [BepInPlugin("com.dual.drop-button", "Drop Button", "1.0.0")]
 sealed class Plugin : BaseUnityPlugin
 {
+    sealed class PlayerData { public PhysicalObject track; public int timer; }
+
     static readonly PlayerKeybind dropButton = PlayerKeybind.Register("dropbutton:dropbutton", "Drop Button", "Drop", KeyCode.C, KeyCode.JoystickButton3);
+    static readonly ConditionalWeakTable<Player, PlayerData> tossed = new();
 
     static bool ActiveFor(Player p) => p.IsKeyBound(dropButton);
 
     public void OnEnable()
     {
         On.Player.ReleaseObject += Player_ReleaseObject;
+        On.PlayerGraphics.Update += FixHand;
         IL.Player.GrabUpdate += Player_GrabUpdate;
     }
 
     private void Player_ReleaseObject(On.Player.orig_ReleaseObject orig, Player self, int grasp, bool eu)
     {
-        bool toss = self.input[0].x != 0 && self.input[0].y >= 0 || self.input[0].x == 0 && self.input[0].y < 0;
+        bool toss = self.input[0].x != 0 && self.input[0].y >= 0 || self.input[0].x == 0 && self.input[0].y != 0;
         if (ActiveFor(self) && toss && self.grasps[grasp]?.grabbed is PhysicalObject grabbed) {
             LightToss(self, grasp, grabbed);
             return;
         }
         orig(self, grasp, eu);
+    }
+
+    private void FixHand(On.PlayerGraphics.orig_Update orig, PlayerGraphics self)
+    {
+        orig(self);
+
+        PlayerData playerData = tossed.GetOrCreateValue(self.player);
+
+        if (self.player.Consious && playerData.timer --> 0) {
+            SlugcatHand hand = self.hands[self.handEngagedInThrowing];
+            hand.reachingForObject = true;
+            hand.absoluteHuntPos = playerData.track.firstChunk.pos;
+            if (Custom.DistLess(self.head.pos, playerData.track.firstChunk.pos, 20f)) {
+                hand.pos = playerData.track.firstChunk.pos;
+            }
+            else {
+                hand.pos = self.head.pos + Custom.DirVec(self.head.pos, playerData.track.firstChunk.pos) * 20f;
+            }
+        }
+        else {
+            playerData.track = null;
+        }
     }
 
     private static void LightToss(Player self, int grasp, PhysicalObject grabbed)
@@ -125,6 +152,12 @@ sealed class Plugin : BaseUnityPlugin
                 chunk.vel = Vector2.Lerp(chunk.vel * 0.35f, self.mainBodyChunk.vel, Custom.LerpMap(grabbed.TotalMass, 0.2f, 0.5f, 0.6f, 0.3f));
                 chunk.vel += Custom.DegToVec(angle * self.ThrowDirection) * Mathf.Clamp(speed / (Mathf.Lerp(grabbed.TotalMass, 0.4f, 0.2f) * grabbed.bodyChunks.Length), 4f, 14f);
             }
+        }
+
+        if (self.graphicsModule is PlayerGraphics g) {
+            tossed.GetOrCreateValue(self).track = grabbed;
+            tossed.GetOrCreateValue(self).timer = 3;
+            g.handEngagedInThrowing = grasp;
         }
 
         self.dontGrabStuff = 10;

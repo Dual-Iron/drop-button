@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "authors": "Dual",
   "target_game_version": "v1.9",
-  "description": "Adds a dedicated button to drop or politely toss held objects. If the key is bound, the vanilla key is unbound. Configure in the Input Settings screen.",
+  "description": "Adds a dedicated button to politely toss or drop held objects. Configure in the Input Settings screen. Note that the vanilla key is unbound whenever the Drop key is bound.",
   "tags": [ "Accessibility", "Game Mechanics", "Items" ],
   "requirements": [ "improved-input-config" ],
   "requirements_names": [ "Improved Input Config" ],
