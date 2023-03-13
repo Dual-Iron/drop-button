@@ -15,7 +15,7 @@ using UnityEngine;
 
 namespace DropButton;
 
-[BepInPlugin("com.dual.drop-button", "Drop Button", "1.0.0")]
+[BepInPlugin("com.dual.drop-button", "Drop Button", "1.0.1")]
 sealed class Plugin : BaseUnityPlugin
 {
     sealed class PlayerData { public PhysicalObject track; public int timer; }
