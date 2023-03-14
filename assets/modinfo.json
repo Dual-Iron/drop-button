@@ -1,7 +1,7 @@
 ﻿{
   "id": "drop-button",
   "name": "Drop Button",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "authors": "Dual",
   "target_game_version": "v1.9",
   "description": "Adds a dedicated button to politely toss or drop held objects. Configure in the Input Settings screen. Note that the vanilla key is unbound whenever the Drop key is bound.<LINE><LINE>Code at github.com/drop-button",

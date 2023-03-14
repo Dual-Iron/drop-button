@@ -15,7 +15,7 @@ using UnityEngine;
 
 namespace DropButton;
 
-[BepInPlugin("com.dual.drop-button", "Drop Button", "1.0.2")]
+[BepInPlugin("com.dual.drop-button", "Drop Button", "1.0.3")]
 sealed class Plugin : BaseUnityPlugin
 {
     sealed class PlayerData { public PhysicalObject track; public int timer; }
@@ -183,8 +183,13 @@ sealed class Plugin : BaseUnityPlugin
 
             // Ignore wantToPickUp for dropping items
             cursor.GotoPrev(MoveType.After, i => i.MatchLdfld<Player>("wantToPickUp"));
-            cursor.Emit(OpCodes.Pop);
-            cursor.Emit(OpCodes.Ldc_I4_1);
+            cursor.Emit(OpCodes.Ldarg_0);
+            cursor.EmitDelegate(wantToPickUp);
+
+            static int wantToPickUp(int orig, Player self)
+            {
+                return ActiveFor(self) ? 1 : orig;
+            }
 
             // Use wantToPickUp for picking up items
             cursor.GotoNext(MoveType.After, i => i.MatchLdfld<Player>("pickUpCandidate"));
