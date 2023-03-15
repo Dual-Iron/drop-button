@@ -2,6 +2,7 @@
 using ImprovedInput;
 using Mono.Cecil.Cil;
 using MonoMod.Cil;
+using MoreSlugcats;
 using RWCustom;
 using System;
 using System.Runtime.CompilerServices;
@@ -15,18 +16,21 @@ using UnityEngine;
 
 namespace DropButton;
 
-[BepInPlugin("com.dual.drop-button", "Drop Button", "1.0.3")]
+[BepInPlugin("com.dual.drop-button", "Drop Button", "1.1.0")]
 sealed class Plugin : BaseUnityPlugin
 {
     sealed class PlayerData { public PhysicalObject track; public int timer; }
 
-    static readonly PlayerKeybind dropButton = PlayerKeybind.Register("dropbutton:dropbutton", "Drop Button", "Drop", KeyCode.C, KeyCode.JoystickButton3);
     static readonly ConditionalWeakTable<Player, PlayerData> tossed = new();
 
-    static bool ActiveFor(Player p) => p.IsKeyBound(dropButton);
+    static bool ActiveFor(Player p) => p.IsKeyBound(Api.Drop);
 
     public void OnEnable()
     {
+        // Init Api class to register keybind
+        _ = Api.Drop;
+        
+        // Add shrimple hooks
         On.Player.ReleaseObject += Player_ReleaseObject;
         On.PlayerGraphics.Update += FixHand;
         IL.Player.GrabUpdate += Player_GrabUpdate;
@@ -34,7 +38,10 @@ sealed class Plugin : BaseUnityPlugin
 
     private void Player_ReleaseObject(On.Player.orig_ReleaseObject orig, Player self, int grasp, bool eu)
     {
-        bool toss = self.input[0].x != 0 && self.input[0].y >= 0 || self.input[0].x == 0 && self.input[0].y != 0;
+        bool toss = self.input[0].x != 0 && self.input[0].y >= 0 // Holding left/right and not down
+                 || self.input[0].x == 0 && self.input[0].y > 0  // Holding up
+                 || self.input[0].x == 0 && self.input[0].y < 0 && self.animation == Player.AnimationIndex.Flip // Backflip-tossing
+            ;
         if (ActiveFor(self) && toss && self.grasps[grasp]?.grabbed is PhysicalObject grabbed) {
             LightToss(self, grasp, grabbed);
             return;
@@ -95,13 +102,6 @@ sealed class Plugin : BaseUnityPlugin
                 angle = 70f;
             }
         }
-        if (self.input[0].x == 0 && self.input[0].y < 0) {
-            angle = 180f;
-            speed = 8f;
-            for (int i = 0; i < grabbed.bodyChunks.Length; i++) {
-                grabbed.bodyChunks[i].goThroughFloors = true;
-            }
-        }
 
         if (grabbed is PlayerCarryableItem pci) {
             speed *= pci.ThrowPowerFactor;
@@ -110,7 +110,7 @@ sealed class Plugin : BaseUnityPlugin
         }
 
         if (grabbed is Creature) {
-            speed *= 0.2f;
+            speed *= 0.25f;
         }
 
         if (grabbed.TotalMass < self.TotalMass * 2f && self.ThrowDirection != 0) {
@@ -160,7 +160,6 @@ sealed class Plugin : BaseUnityPlugin
             g.handEngagedInThrowing = grasp;
         }
 
-        self.dontGrabStuff = 10;
         self.room.socialEventRecognizer.CreaturePutItemOnGround(grabbed, self);
         self.ReleaseGrasp(grasp);
     }
@@ -178,28 +177,21 @@ sealed class Plugin : BaseUnityPlugin
 
             static bool ShouldRelease(bool orig, Player self)
             {
-                return ActiveFor(self) ? self.JustPressed(dropButton) : orig;
+                // Ignore vanilla drop check for relevant players.
+                return orig && !ActiveFor(self);
             }
 
             // Ignore wantToPickUp for dropping items
             cursor.GotoPrev(MoveType.After, i => i.MatchLdfld<Player>("wantToPickUp"));
             cursor.Emit(OpCodes.Ldarg_0);
+            cursor.Emit(OpCodes.Ldarg_1);
             cursor.EmitDelegate(wantToPickUp);
 
-            static int wantToPickUp(int orig, Player self)
+            static int wantToPickUp(int orig, Player self, bool eu)
             {
-                return ActiveFor(self) ? 1 : orig;
-            }
-
-            // Use wantToPickUp for picking up items
-            cursor.GotoNext(MoveType.After, i => i.MatchLdfld<Player>("pickUpCandidate"));
-            cursor.Emit(OpCodes.Ldarg_0);
-            cursor.EmitDelegate(PickUpCandidate);
-
-            static PhysicalObject PickUpCandidate(PhysicalObject orig, Player self)
-            {
-                if (self.wantToPickUp <= 0) {
-                    return null;
+                // Check for releasing objects.
+                if (ActiveFor(self) && self.JustPressedDrop()) {
+                    TryReleaseObject(self, eu);
                 }
                 return orig;
             }
@@ -207,5 +199,41 @@ sealed class Plugin : BaseUnityPlugin
         catch (Exception e) {
             Logger.LogError("Failed to hook GrabUpdate: " + e);
         }
+    }
+
+    private static void TryReleaseObject(Player self, bool eu)
+    {
+        foreach (var grasp in self.grasps) {
+            if (grasp != null) {
+                self.ReleaseObject(grasp.graspUsed, eu);
+                return;
+            }
+        }
+        if (self.spearOnBack?.spear != null) {
+            self.room.socialEventRecognizer.CreaturePutItemOnGround(self.spearOnBack.spear, self);
+            self.spearOnBack.DropSpear();
+            return;
+        }
+        if (self.slugOnBack?.slugcat != null) {
+            self.room.socialEventRecognizer.CreaturePutItemOnGround(self.slugOnBack.slugcat, self);
+            self.slugOnBack.DropSlug();
+            return;
+        }
+        if (self.AI == null && self.room.game.GetStorySession?.saveState.wearingCloak == true) {
+            self.room.game.GetStorySession.saveState.wearingCloak = false;
+
+            WorldCoordinate pos = self.room.GetWorldCoordinate(self.mainBodyChunk.pos);
+            AbstractConsumable cloak = new(self.room.game.world, MoreSlugcatsEnums.AbstractObjectType.MoonCloak, null, pos, self.room.game.GetNewID(), -1, -1, null);
+            self.room.abstractRoom.AddEntity(cloak);
+            cloak.pos = self.abstractCreature.pos;
+            cloak.RealizeInRoom();
+            (cloak.realizedObject as MoonCloak).free = true;
+
+            foreach (BodyChunk chunk in cloak.realizedObject.bodyChunks) {
+                chunk.HardSetPosition(self.mainBodyChunk.pos);
+            }
+            return;
+        }
+        Api.InvokeDrop(self, eu);
     }
 }
