@@ -16,7 +16,7 @@ using UnityEngine;
 
 namespace DropButton;
 
-[BepInPlugin("com.dual.drop-button", "Drop Button", "1.1.0")]
+[BepInPlugin("com.dual.drop-button", "Drop Button", "1.1.3")]
 sealed class Plugin : BaseUnityPlugin
 {
     sealed class PlayerData { public PhysicalObject track; public int timer; }
@@ -38,7 +38,8 @@ sealed class Plugin : BaseUnityPlugin
 
     private void Player_ReleaseObject(On.Player.orig_ReleaseObject orig, Player self, int grasp, bool eu)
     {
-        bool toss = self.input[0].x != 0 && self.input[0].y >= 0 // Holding left/right and not down
+        bool toss = self.bodyMode == Player.BodyModeIndex.ZeroG && (self.input[0].x != 0 || self.input[0].y != 0)
+                 || self.input[0].x != 0 && self.input[0].y >= 0 // Holding left/right and not down
                  || self.input[0].x == 0 && self.input[0].y > 0  // Holding up
                  || self.input[0].x == 0 && self.input[0].y < 0 && self.animation == Player.AnimationIndex.Flip // Backflip-tossing
             ;
@@ -103,6 +104,12 @@ sealed class Plugin : BaseUnityPlugin
             }
         }
 
+        Vector2 throwDir = Custom.DegToVec(angle * self.ThrowDirection);
+
+        if (self.bodyMode == Player.BodyModeIndex.ZeroG) {
+            throwDir = new Vector2(self.input[0].x, self.input[0].y).normalized;
+        }
+
         if (grabbed is PlayerCarryableItem pci) {
             speed *= pci.ThrowPowerFactor;
 
@@ -142,7 +149,7 @@ sealed class Plugin : BaseUnityPlugin
         }
 
         if (self.Grabability(grabbed) == Player.ObjectGrabability.Drag) {
-            self.grasps[grasp].grabbedChunk.vel += Custom.DegToVec(angle * self.ThrowDirection) * speed / Mathf.Max(0.5f, self.grasps[grasp].grabbedChunk.mass);
+            self.grasps[grasp].grabbedChunk.vel += throwDir * speed / Mathf.Max(0.5f, self.grasps[grasp].grabbedChunk.mass);
         }
         else {
             foreach (BodyChunk chunk in grabbed.bodyChunks) {
@@ -150,7 +157,7 @@ sealed class Plugin : BaseUnityPlugin
                     chunk.vel.y = 0f;
                 }
                 chunk.vel = Vector2.Lerp(chunk.vel * 0.35f, self.mainBodyChunk.vel, Custom.LerpMap(grabbed.TotalMass, 0.2f, 0.5f, 0.6f, 0.3f));
-                chunk.vel += Custom.DegToVec(angle * self.ThrowDirection) * Mathf.Clamp(speed / (Mathf.Lerp(grabbed.TotalMass, 0.4f, 0.2f) * grabbed.bodyChunks.Length), 4f, 14f);
+                chunk.vel += throwDir * Mathf.Clamp(speed / (Mathf.Lerp(grabbed.TotalMass, 0.4f, 0.2f) * grabbed.bodyChunks.Length), 4f, 14f);
             }
         }
 
@@ -171,7 +178,7 @@ sealed class Plugin : BaseUnityPlugin
 
             // Navigate to the bool that decides whether or not to drop items
             cursor.Index = cursor.Body.Instructions.Count - 1;
-            cursor.GotoPrev(MoveType.After, i => i.MatchLdloc(43));
+            cursor.GotoPrev(MoveType.After, i => i.MatchLdloc(44));
             cursor.Emit(OpCodes.Ldarg_0);
             cursor.EmitDelegate(ShouldRelease);
 
